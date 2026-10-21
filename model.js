@@ -35,7 +35,7 @@ for(const k of ['model','manufacturer'])if(!present(s[k]))add(label+`请填写${
 for(const [k,l]of [['diameter','叶轮直径'],['height','轮毂高度'],['power','额定功率']])if(num(s[k])===null||num(s[k])<=0)add(label+l+'须为大于0的数值',1,i);
 if(!u.scope.insulation&&!u.scope.dc)add(label+'请至少选择一个检测项目',1,i);
 if(u.scope.insulation){if(!Object.values(u.summaryEnabled).some(Boolean))add(label+'请至少选择一个绝缘汇总绕组',2,i,'insulation');for(const s of ['stator','rotor'])if(u.summaryEnabled[s]&&(num(u.insulationSummary[s])===null||num(u.insulationSummary[s])<0))add(label+sideName(s)+'绝缘汇总值未填写或无效',2,i,'insulation');if(!u.insulation.length)add(label+'请添加绝缘回路',2,i,'insulation');const names=new Set();u.insulation.forEach(x=>{const id=[x.side,x.phase,x.location||u.place].join('|');if(!present(x.phase)||names.has(id))add(label+'绝缘回路名称为空或重复',2,i,'insulation');names.add(id);if(insResult(x,r.rules)===null)add(label+`${sideName(x.side)} ${x.phase} 测量不完整或15s值为0，无法计算吸收比`,2,i,'insulation')})}
-if(u.scope.dc){if(!u.dc.length)add(label+'请添加直流测量组',2,i,'dc');u.dc.forEach(x=>{if(x.pairs.length!==3||x.pairs.some(p=>!present(p))||new Set(x.pairs).size!==3)add(label+'直流回路须为三个不同名称',2,i,'dc');if(dcResult(x,r.rules)===null)add(label+sideName(x.side)+'直流三项测量不完整或平均值为0',2,i,'dc')})}});
+if(u.scope.dc){if(!u.dc.length)add(label+'请添加直流测量组',2,i,'dc');u.dc.forEach(x=>{const sx=dcSummary(x);if(sx.pairs.length!==3||sx.pairs.some(p=>!present(p))||new Set(sx.pairs).size!==3)add(label+'直流汇总测点须为三个不同名称',2,i,'dc');if(dcResult(sx,r.rules)===null)add(label+sideName(x.side)+'直流汇总三项实测值未填写或无效',2,i,'dc');if(x.pairs.length!==3||x.pairs.some(p=>!present(p))||new Set(x.pairs).size!==3)add(label+'直流回路须为三个不同名称',2,i,'dc');if(dcResult(x,r.rules)===null)add(label+sideName(x.side)+'直流三项测量不完整或平均值为0',2,i,'dc')})}});
 for(const k of ['insulationMin','ratioMin','deviationMax'])if(num(r.rules[k])===null||num(r.rules[k])<=0)add('判定阈值须大于0',3);
 for(const k of ['ratioDigits','deviationDigits'])if(!Number.isInteger(r.rules[k])||r.rules[k]<0||r.rules[k]>4)add('显示小数位须为0至4的整数',3);
 if(!r.ruleConfirmed)add('请确认本项目的判定规则',3);if(!r.templateConfirmed)add('请核对固定章节与实际检测设备',3);
@@ -43,9 +43,9 @@ if(!present(r.conclusion))add('请根据实测结果填写检测结论',3,null,n
 if(!r.equipment.length)add('请填写实际使用的检测设备',3);r.equipment.forEach((e,i)=>{if(['name','code','model','validUntil'].some(k=>!present(e[k]))||!validDate(e.validUntil))add(`设备${i+1}信息不完整`,3);else if(e.validUntil<r.endDate)add(`设备${i+1}校准有效期早于检测结束日期`,3)});
 return out}
 function finalChecks(r,signatures,reports){const out=checks(r,signatures,reports);r.units.forEach((u,i)=>{if(u.scope.insulation&&u.insulation.some(x=>!x.photo15||!x.photo60))out.push({text:`${u.number}#：绝缘照片未齐全`,step:2,unit:i,kind:'insulation'});if(u.scope.dc&&u.dc.some(x=>x.photos.some(p=>!p)))out.push({text:`${u.number}#：直流照片未齐全`,step:2,unit:i,kind:'dc'})});for(const [k,l]of [['writer','编写'],['reviewer','审核'],['approver','批准']])if(!present(r[k])||!signatures[r[k]])out.push({text:`${l}人员签名未齐全`,step:3});return out}
-function completeness(r){const fields=['name','location','client','clientAddress','producer','contractDate','startDate','endDate','projectEnd','conclusion'];let a=fields.map(k=>present(r[k]));r.units.forEach(u=>{a.push(present(u.number),present(u.place));a.push(...Object.values(spec(r,u)).map(present));if(u.scope.insulation){for(const s of ['stator','rotor'])if(u.summaryEnabled[s])a.push(num(u.insulationSummary[s])!==null);u.insulation.forEach(x=>a.push(num(x.r15)!==null,num(x.r60)!==null,!!x.photo15,!!x.photo60))}if(u.scope.dc)u.dc.forEach(x=>a.push(...x.values.map(v=>num(v)!==null),...x.photos.map(Boolean)))});return Math.round(a.filter(Boolean).length/a.length*100)}
+function completeness(r){const fields=['name','location','client','clientAddress','producer','contractDate','startDate','endDate','projectEnd','conclusion'];let a=fields.map(k=>present(r[k]));r.units.forEach(u=>{a.push(present(u.number),present(u.place));a.push(...Object.values(spec(r,u)).map(present));if(u.scope.insulation){for(const s of ['stator','rotor'])if(u.summaryEnabled[s])a.push(num(u.insulationSummary[s])!==null);u.insulation.forEach(x=>a.push(num(x.r15)!==null,num(x.r60)!==null,!!x.photo15,!!x.photo60))}if(u.scope.dc)u.dc.forEach(x=>a.push(...dcSummary(x).values.map(v=>num(v)!==null),...x.values.map(v=>num(v)!==null),...x.photos.map(Boolean)))});return Math.round(a.filter(Boolean).length/a.length*100)}
 function displayDate(v,format='compact'){return v?(format==='compact'?v.replaceAll('-','').slice(2):v.replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$1年$2月$3日')):'〔日期待填写〕'}
-function findings(r){const result=[];r.units.forEach(u=>{if(u.scope.insulation){for(const s of ['stator','rotor']){const n=num(u.insulationSummary[s]);if(u.summaryEnabled[s]&&n!==null&&n>=0&&n<=r.rules.insulationMin)result.push(`${u.number}# ${sideName(s)}绝缘汇总不合格`)}u.insulation.forEach(x=>{if(insResult(x,r.rules)===false)result.push(`${u.number}# ${sideName(x.side)} ${x.phase} 绝缘明细不合格`)})}if(u.scope.dc)u.dc.forEach(x=>{if(dcResult(x,r.rules)===false)result.push(`${u.number}# ${sideName(x.side)}直流电阻偏差不合格`)})});return result}
+function findings(r){const result=[];r.units.forEach(u=>{if(u.scope.insulation){for(const s of ['stator','rotor']){const n=num(u.insulationSummary[s]);if(u.summaryEnabled[s]&&n!==null&&n>=0&&n<=r.rules.insulationMin)result.push(`${u.number}# ${sideName(s)}绝缘汇总不合格`)}u.insulation.forEach(x=>{if(insResult(x,r.rules)===false)result.push(`${u.number}# ${sideName(x.side)} ${x.phase} 绝缘明细不合格`)})}if(u.scope.dc)u.dc.forEach(x=>{if(dcResult(dcSummary(x),r.rules)===false)result.push(`${u.number}# ${sideName(x.side)}直流汇总偏差不合格`);if(dcResult(x,r.rules)===false)result.push(`${u.number}# ${sideName(x.side)}直流电阻偏差不合格`)})});return result}
 // One mapping for the Word tables and the on-screen cross-check.
 function insulationTables(u,rule){
 const value=v=>String(v??'').trim()||'〔待填写〕', verdict=v=>v===null?'待完善':v?'合格':'不合格';
@@ -59,5 +59,20 @@ const v=ratio(x.r15,x.r60);details.push({cells:[part,project,`${sideName(x.side)
 if(!u.insulation.length)details.push({cells:['绝缘电阻测试','〔检测项目待填写〕','〔回路待填写〕','—','待完善']});
 return {summary,details};
 }
-root.ReportCore={insulationTables,defaults,people,equipment,num,key,date,validDate,ratio,deviation,pass,unit,report,normalize,spec,codes,overview,photoCount,checks,issues:r=>checks(r).map(x=>x.text),finalChecks,completeness,insResult,dcResult,sideName,pairs,findings,displayDate};if(typeof module!=='undefined')module.exports=root.ReportCore;
+function dcSummary(x){return {side:x.side,pairs:x.summaryPairs|| (x.side==='stator'?['U—V','U—W','V—W']:['K—L','K—M','L—M']),values:x.summaryValues||['','','']}}
+function dcTables(u,rule){
+const v=x=>String(x??'').trim()||'〔待填写〕',verdict=x=>x===null?'待完善':x?'合格':'不合格',fmt=x=>x===null?'〔无法计算〕':x.toFixed(rule.deviationDigits)+'%',number=v(u.number)+'#',sign=rule.inclusive?'≤':'<';
+const summary=[],details=[];
+if(!u.scope.dc)return {summary:[{cells:[number+'风机发电机定转子绕组直流电阻测试','本项目未开展','—','未检测']}],details:[{cells:['发电机直流电阻测试','—','本项目未开展','—','未检测']} ]};
+for(const x of u.dc){const sx=dcSummary(x),sd=deviation(sx.values),d=deviation(x.values),where=v(x.location||u.place);
+for(let j=0;j<3;j++){
+summary.push({cells:[number+'风机发电机定转子绕组直流电阻测试',sideName(x.side),`${sideName(x.side)}侧${v(sx.pairs[j])}：${v(sx.values[j])}mΩ`,`${sign}${rule.deviationMax}%；${verdict(sd?sd.every(n=>pass(n,rule.deviationMax,rule.inclusive)):null)}`]});
+details.push({cells:['发电机直流电阻测试',where,`${sideName(x.side)}侧${v(x.pairs[j])}：${v(x.values[j])}mΩ`,'',verdict(d?pass(d[j],rule.deviationMax,rule.inclusive):null)],photo:x.photos[j]||null,measurement:true});
+}
+details.push({cells:['发电机直流电阻测试',`${sideName(x.side)}绕组直流电阻偏差值${rule.inclusive?'小于等于':'小于'}${rule.deviationMax}％`,...Array.from({length:3},(_,j)=>fmt(d?d[j]:null)),verdict(dcResult(x,rule))],deviation:true});
+}
+if(!u.dc.length){summary.push({cells:[number+'直流电阻测试','〔测量组待填写〕','—','待完善']});details.push({cells:['发电机直流电阻测试','〔测量组待填写〕','—','—','待完善']})}
+return {summary,details};
+}
+root.ReportCore={dcSummary,dcTables,insulationTables,defaults,people,equipment,num,key,date,validDate,ratio,deviation,pass,unit,report,normalize,spec,codes,overview,photoCount,checks,issues:r=>checks(r).map(x=>x.text),finalChecks,completeness,insResult,dcResult,sideName,pairs,findings,displayDate};if(typeof module!=='undefined')module.exports=root.ReportCore;
 })(globalThis);

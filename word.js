@@ -22,6 +22,7 @@ const meta=rows(tables[1]);cell(cells(meta[1])[1],r.testDateMode==='end'?C.displ
 const groups=new Map();for(const u of r.units){const s=C.spec(r,u),k=JSON.stringify(s);if(!groups.has(k))groups.set(k,{spec:s,units:[]});groups.get(k).units.push(u)}
 const base=tables[2].cloneNode(true);for(const group of groups.values()){const t=base.cloneNode(true),s=group.spec,vals=[value(s.model),value(s.diameter)+'m',value(s.height)+'m',value(s.power)+'kW',value(s.manufacturer),group.units.length+'台'];rows(t).forEach((row,i)=>cell(cells(row)[1],vals[i]));const label=el(doc,'p');setP(label,'机组：'+group.units.map(u=>value(u.number)+'#').join('、'));tables[2].before(label,t)}tables[2].remove();
 for(const p of all(doc,'p')){const s=txt(p);if(s==='xxxxxxx风电场')setP(p,value(r.name),48);else if(s==='2026年08月xx日')setP(p,C.displayDate(r.projectEnd,r.dateFormat),36);else if(s.startsWith('受xxxxx有限公司委托'))setP(p,C.overview(r));else if(s.startsWith('经现场测试63台机组'))setP(p,value(r.conclusion))}
+const dcDeviationBase=cleanRow(rows(tables[6])[4].cloneNode(true));
 const addSummary=tableWriter(tables[3]),addIns=tableWriter(tables[4]),addDcSummary=tableWriter(tables[5]),addDc=tableWriter(tables[6]);
 for(const u of r.units){const number=value(u.number)+'#',mapped=C.insulationTables(u,rule);
 for(const row of mapped.summary)addSummary(row.cells);
@@ -29,7 +30,11 @@ for(const row of mapped.summary)addSummary(row.cells);
 // An explicit unit label above each detail block prevents multi-unit ambiguity.
 const unitLabel=el(doc,'tr'),unitCell=el(doc,'tc'),unitProps=el(doc,'tcPr'),span=el(doc,'gridSpan');span.setAttributeNS(W,'w:val','5');unitProps.append(span);unitCell.append(unitProps);cell(unitCell,'机组：'+number);unitLabel.append(unitCell);tables[4].append(unitLabel);
 for(const row of mapped.details){const cc=addIns(row.cells);if(row.measurement)await picture(cc[3],row.photo)}
-if(!u.scope.dc){addDcSummary([number+'直流电阻测试','本项目未开展','—','未检测']);addDc(['直流电阻测试',number,'本项目未开展','—','未检测'])}else{for(const x of u.dc){const d=C.deviation(x.values),where=number+' '+value(x.location||u.place),sign=rule.inclusive?'≤':'<';for(let j=0;j<3;j++){const result=d?C.pass(d[j],rule.deviationMax,rule.inclusive):null,name=`${C.sideName(x.side)}侧${value(x.pairs[j])}：${value(x.values[j])}mΩ`;addDcSummary([number+'直流电阻测试',C.sideName(x.side),name,`${sign}${rule.deviationMax}%；${verdict(result)}`]);const cc=addDc(['发电机直流电阻测试',where,name,'',verdict(result)]);await picture(cc[3],x.photos[j])}addDc([C.sideName(x.side)+'绕组直流电阻偏差',where,`各相偏差${sign}${rule.deviationMax}%`,d?d.map(v=>fmt(v,rule.deviationDigits)+'%').join(' / '):'〔无法计算〕',verdict(C.dcResult(x,rule))])}if(!u.dc.length){addDcSummary([number+'直流电阻测试','〔回路待填写〕','—','待完善']);addDc(['直流电阻测试',number,'〔回路待填写〕','—','待完善'])}}
+const dcMapped=C.dcTables(u,rule);
+for(const row of dcMapped.summary)addDcSummary(row.cells);
+const dcLabel=unitLabel.cloneNode(true);all(dcLabel,'gridSpan')[0].setAttributeNS(W,'w:val','7');tables[6].append(dcLabel);
+for(const row of dcMapped.details){if(row.deviation){const tr=dcDeviationBase.cloneNode(true);row.cells.forEach((text,i)=>cell(cells(tr)[i],text));tables[6].append(tr)}else{const cc=addDc(row.cells);if(row.measurement)await picture(cc[3],row.photo)}}
+
 }
 const addEquip=tableWriter(tables[7]);r.equipment.forEach((e,i)=>addEquip([String(i+1),value(e.name),value(e.code),value(e.model),date(e.validUntil)]));if(!r.equipment.length)addEquip(['1','〔设备待填写〕','—','—','—']);
 if(options.draft||r.demo){const p=el(doc,'p');setP(p,r.demo?'示例报告 · 不用于正式出具':'草稿 · 未完成核对，不用于正式出具',24);body.insertBefore(p,body.firstChild)}
