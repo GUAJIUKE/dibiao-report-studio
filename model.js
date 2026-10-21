@@ -74,5 +74,18 @@ details.push({cells:['发电机直流电阻测试',`${sideName(x.side)}绕组直
 if(!u.dc.length){summary.push({cells:[number+'直流电阻测试','〔测量组待填写〕','—','待完善']});details.push({cells:['发电机直流电阻测试','〔测量组待填写〕','—','—','待完善']})}
 return {summary,details};
 }
-root.ReportCore={dcSummary,dcTables,insulationTables,defaults,people,equipment,num,key,date,validDate,ratio,deviation,pass,unit,report,normalize,spec,codes,overview,photoCount,checks,issues:r=>checks(r).map(x=>x.text),finalChecks,completeness,insResult,dcResult,sideName,pairs,findings,displayDate};if(typeof module!=='undefined')module.exports=root.ReportCore;
+// Shared semantic spans. A zero marks a continuation cell, not deleted data.
+function tableSpans(data,kind){
+const spans=data.map(r=>r.cells.map(()=>1));
+const cols=kind==='dcSummary'?[0,1,3]:[0,1];
+for(const col of cols){let start=0;while(start<data.length){
+const key=i=>{const r=data[i];if(kind==='dcDetails'&&col===1&&!r.measurement)return null;
+const group=kind==='dcSummary'&&col!==0?Math.floor(i/3):'';
+return JSON.stringify([group,...r.cells.slice(0,col===0?1:2),col===3?r.cells[3]:''])};
+const k=key(start);let end=start+1;if(k!==null)while(end<data.length&&key(end)===k)end++;
+spans[start][col]=end-start;for(let i=start+1;i<end;i++)spans[i][col]=0;start=end;
+}}
+return spans;
+}
+root.ReportCore={tableSpans,dcSummary,dcTables,insulationTables,defaults,people,equipment,num,key,date,validDate,ratio,deviation,pass,unit,report,normalize,spec,codes,overview,photoCount,checks,issues:r=>checks(r).map(x=>x.text),finalChecks,completeness,insResult,dcResult,sideName,pairs,findings,displayDate};if(typeof module!=='undefined')module.exports=root.ReportCore;
 })(globalThis);

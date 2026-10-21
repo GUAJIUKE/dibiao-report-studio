@@ -8,7 +8,10 @@ const r=el(d,'r');r.append(rp);String(text).split('\n').forEach((line,i)=>{if(i)
 function cell(c,text,size){let p=direct(c,'p')[0];if(!p){p=el(c.ownerDocument,'p');c.append(p)}for(const x of [...c.children])if(x!==p&&x.localName!=='tcPr')x.remove();setP(p,text,size);return p}
 const rows=t=>direct(t,'tr'),cells=r=>direct(r,'tc');
 function cleanRow(row){for(const tag of ['vMerge','bookmarkStart','bookmarkEnd','trHeight'])all(row,tag).forEach(x=>x.remove());return row}
-function tableWriter(t){const rr=rows(t),base=cleanRow(rr[1].cloneNode(true));rr.slice(1).forEach(x=>x.remove());let pr=direct(rr[0],'trPr')[0];if(!pr){pr=el(t.ownerDocument,'trPr');rr[0].prepend(pr)}if(!direct(pr,'tblHeader').length)pr.append(el(t.ownerDocument,'tblHeader'));return arr=>{const row=base.cloneNode(true),cc=cells(row);arr.forEach((v,i)=>cell(cc[i],v));t.append(row);return cc}}
+function property(node,container,name,value){let pr=direct(node,container)[0];if(!pr){pr=el(node.ownerDocument,container);node.prepend(pr)}for(const old of direct(pr,name))old.remove();const n=el(node.ownerDocument,name);if(value!==undefined)n.setAttributeNS(W,'w:val',value);pr.append(n)}
+function keepRow(row,keep){property(row,'trPr','cantSplit');for(const p of all(row,'p'))property(p,'pPr','keepNext',keep?'1':'0')}
+function mergeTableCells(data,rendered,kind){const spans=ReportCore.tableSpans(data,kind);for(let i=0;i<data.length;i++)for(let j=0;j<spans[i].length;j++){const count=spans[i][j],c=rendered[i][j];if(count===1)continue;property(c,'tcPr','vMerge',count===0?'continue':'restart');property(c,'tcPr','vAlign','center');if(count===0)cell(c,'')}}
+function tableWriter(t){const rr=rows(t),base=cleanRow(rr[1].cloneNode(true));rr.slice(1).forEach(x=>x.remove());let pr=direct(rr[0],'trPr')[0];if(!pr){pr=el(t.ownerDocument,'trPr');rr[0].prepend(pr)}if(!direct(pr,'tblHeader').length)pr.append(el(t.ownerDocument,'tblHeader'));keepRow(rr[0],true);return arr=>{const row=base.cloneNode(true),cc=cells(row);arr.forEach((v,i)=>cell(cc[i],v));keepRow(row,false);t.append(row);return cc}}
 function loadImage(data){return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(Error('图片读取失败'));img.src=data})}
 async function generate(report,signatures,options={}){
 const C=ReportCore,r=C.normalize(structuredClone(report)),rule=r.rules,codes=C.codes(r);const response=await fetch('template.docx?v=3');if(!response.ok)throw Error('无法加载Word模板');const zip=await JSZip.loadAsync(await response.arrayBuffer()),doc=parse(await zip.file('word/document.xml').async('string')),rels=parse(await zip.file('word/_rels/document.xml.rels').async('string'));let imageId=5000;
@@ -24,18 +27,23 @@ const base=tables[2].cloneNode(true);for(const group of groups.values()){const t
 for(const p of all(doc,'p')){const s=txt(p);if(s==='xxxxxxx风电场')setP(p,value(r.name),48);else if(s==='2026年08月xx日')setP(p,C.displayDate(r.projectEnd,r.dateFormat),36);else if(s.startsWith('受xxxxx有限公司委托'))setP(p,C.overview(r));else if(s.startsWith('经现场测试63台机组'))setP(p,value(r.conclusion))}
 const dcDeviationBase=cleanRow(rows(tables[6])[4].cloneNode(true));
 const addSummary=tableWriter(tables[3]),addIns=tableWriter(tables[4]),addDcSummary=tableWriter(tables[5]),addDc=tableWriter(tables[6]);
+const allInsSummary=[],allInsSummaryCells=[];
 for(const u of r.units){const number=value(u.number)+'#',mapped=C.insulationTables(u,rule);
-for(const row of mapped.summary)addSummary(row.cells);
+for(const row of mapped.summary){allInsSummary.push(row);allInsSummaryCells.push(addSummary(row.cells))}
 // Keep the report's detection-project column for the cabinet/location only.
 // An explicit unit label above each detail block prevents multi-unit ambiguity.
-const unitLabel=el(doc,'tr'),unitCell=el(doc,'tc'),unitProps=el(doc,'tcPr'),span=el(doc,'gridSpan');span.setAttributeNS(W,'w:val','5');unitProps.append(span);unitCell.append(unitProps);cell(unitCell,'机组：'+number);unitLabel.append(unitCell);tables[4].append(unitLabel);
-for(const row of mapped.details){const cc=addIns(row.cells);if(row.measurement)await picture(cc[3],row.photo)}
+const unitLabel=el(doc,'tr'),unitCell=el(doc,'tc'),unitProps=el(doc,'tcPr'),span=el(doc,'gridSpan');span.setAttributeNS(W,'w:val','5');unitProps.append(span);unitCell.append(unitProps);cell(unitCell,'机组：'+number);unitLabel.append(unitCell);keepRow(unitLabel,true);tables[4].append(unitLabel);
+const insCells=[];for(const row of mapped.details){const cc=addIns(row.cells);insCells.push(cc);if(row.measurement)await picture(cc[3],row.photo)}
+mergeTableCells(mapped.details,insCells,'insDetails');
 const dcMapped=C.dcTables(u,rule);
-for(const row of dcMapped.summary)addDcSummary(row.cells);
+const dcSummaryCells=dcMapped.summary.map(row=>addDcSummary(row.cells));mergeTableCells(dcMapped.summary,dcSummaryCells,'dcSummary');
 const dcLabel=unitLabel.cloneNode(true);all(dcLabel,'gridSpan')[0].setAttributeNS(W,'w:val','7');tables[6].append(dcLabel);
-for(const row of dcMapped.details){if(row.deviation){const tr=dcDeviationBase.cloneNode(true);row.cells.forEach((text,i)=>cell(cells(tr)[i],text));tables[6].append(tr)}else{const cc=addDc(row.cells);if(row.measurement)await picture(cc[3],row.photo)}}
-
+const dcCells=[];for(const row of dcMapped.details){if(row.deviation){const tr=dcDeviationBase.cloneNode(true);row.cells.forEach((text,i)=>cell(cells(tr)[i],text));keepRow(tr,false);dcCells.push(cells(tr));tables[6].append(tr)}else{const cc=addDc(row.cells);dcCells.push(cc);if(row.measurement)await picture(cc[3],row.photo)}}
+mergeTableCells(dcMapped.details,dcCells,'dcDetails');
+// Keep each final measurement with its short calculated-result row.
+for(const cc of [insCells,dcCells])for(let i=0;i<cc.length-1;i++){const data=cc===insCells?mapped.details:dcMapped.details;if(data[i].measurement&&!data[i+1].measurement)keepRow(cc[i][0].parentElement,true)}
 }
+mergeTableCells(allInsSummary,allInsSummaryCells,'insSummary');
 const addEquip=tableWriter(tables[7]);r.equipment.forEach((e,i)=>addEquip([String(i+1),value(e.name),value(e.code),value(e.model),date(e.validUntil)]));if(!r.equipment.length)addEquip(['1','〔设备待填写〕','—','—','—']);
 if(options.draft||r.demo){const p=el(doc,'p');setP(p,r.demo?'示例报告 · 不用于正式出具':'草稿 · 未完成核对，不用于正式出具',24);body.insertBefore(p,body.firstChild)}
 zip.file('word/document.xml',xml(doc));zip.file('word/_rels/document.xml.rels',xml(rels));
